@@ -1,0 +1,15 @@
+out
+dist
+!**/css/dist
+target
+*.classpath
+*.project
+*.springBeans
+*.settings
+*.metadata
+*.idea
+*.iml
+node_modules
+bower_components
+bower.json
+overlays
