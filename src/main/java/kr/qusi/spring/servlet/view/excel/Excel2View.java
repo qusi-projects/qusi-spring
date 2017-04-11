@@ -1,7 +1,14 @@
 package kr.qusi.spring.servlet.view.excel;
 
 import kr.qusi.spring.servlet.view.encoding.FilenameEncoder;
+import net.sf.jxls.transformer.XLSTransformer;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.springframework.core.io.Resource;
+import org.springframework.web.context.support.ServletContextResource;
 import org.springframework.web.servlet.view.AbstractUrlBasedView;
 
 import javax.servlet.http.HttpServletRequest;
@@ -12,6 +19,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class Excel2View extends AbstractUrlBasedView {
+
+    public static final String BUNDLE = Bundle.class.getName();
 
     /** Excel 2003 이하 확장자 */
     public static final String EXTENSION_XLS = ".xls";
@@ -39,7 +48,76 @@ public class Excel2View extends AbstractUrlBasedView {
 
     @Override
     protected void renderMergedOutputModel(Map<String, Object> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+        if (model.get(BUNDLE) == null || !(model.get(BUNDLE) instanceof Bundle))
+            throw new IllegalArgumentException("Bundle not found");
 
+        Bundle bundle = (Bundle) model.get(BUNDLE);
+        String basename = getBasename(request, bundle);
+        Resource template = getTemplate(request, bundle);
+        List<Map<String, Object>> extras = bundle.getExtrasAsList();
+
+        // 단일파일
+        if (extras.size() == 1) {
+            prepareAttachment(request, response, basename + getSuffix());
+
+            transformXLS(template, extras.get(0)).write(response.getOutputStream());
+        }
+        // 복수파일 (zip 압축)
+        else {
+            File tempDir = createTempDirectory();
+
+            for (int i = 0; i < extras.size(); i++) {
+                FileOutputStream os = null;
+                try {
+                    String filename = basename + "_" + getSuffix();
+                    os = new FileOutputStream(new File(getTempDir(), filename));
+
+                    transformXLS(template, extras.get(i)).write(os);
+                } finally {
+                    IOUtils.closeQuietly(os);
+                }
+            }
+
+            // 압축파일 다운로드
+            prepareAttachment(request, response, basename + EXTENSION_ZIP);
+            zip(tempDir, response.getOutputStream());
+        }
+
+        response.flushBuffer();
+    }
+
+    private Workbook transformXLS(Resource template, Map<String, Object> extras) throws IOException, InvalidFormatException {
+        return new XLSTransformer().transformXLS(template.getInputStream(), extras);
+    }
+
+    protected String getBasename(HttpServletRequest request, Bundle bundle) throws FileNotFoundException {
+        return bundle.getFilename() != null ?
+                FilenameUtils.getBaseName(bundle.getFilename()) : FilenameUtils.getBaseName(getTemplate(request, bundle).getFilename());
+    }
+
+    protected Resource getTemplate(HttpServletRequest request, Bundle bundle) throws FileNotFoundException {
+        // 템플릿 파일목록 생성
+        List<String> tmplNames = new ArrayList<>();
+        if (bundle.getTemplate() != null)
+            tmplNames.add(bundle.getTemplate() + getSuffix());
+        tmplNames.add(getUrl());
+
+        // 템플릿 파일 찾기
+        for (String tmplName : tmplNames) {
+            Resource template = new ServletContextResource(request.getServletContext(), tmplName);
+            if (template.exists())
+                return template;
+        }
+
+        throw new FileNotFoundException("Excel template not found");
+    }
+
+    protected File createTempDirectory() throws IOException {
+        File file = File.createTempFile(Excel2View.class.getSimpleName(), "", getTempDir());
+        FileUtils.forceDelete(file);
+        FileUtils.forceMkdir(file);
+
+        return file;
     }
 
     /**
