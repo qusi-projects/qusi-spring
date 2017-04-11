@@ -1,5 +1,6 @@
 package kr.qusi.spring.servlet.view.excel;
 
+import kr.qusi.spring.servlet.view.encoding.FilenameEncoder;
 import org.apache.commons.io.IOUtils;
 import org.springframework.web.servlet.view.AbstractUrlBasedView;
 
@@ -12,9 +13,83 @@ import java.util.zip.ZipOutputStream;
 
 public class Excel2View extends AbstractUrlBasedView {
 
+    /** Excel 2003 이하 확장자 */
+    public static final String EXTENSION_XLS = ".xls";
+
+    /** Excel 2003 이하 ContentType */
+    public static final String CONTENT_TYPE_XLS = "application/vnd.ms-excel";
+
+    /** Excel 2007 이상 확장자 */
+    public static final String EXTENSION_XLSX = ".xlsx";
+
+    /** Excel 2007 이상 ContentType */
+    public static final String CONTENT_TYPE_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    /** Zip 확장자 */
+    public static final String EXTENSION_ZIP = ".zip";
+
+    /** Zip ContentType */
+    public static final String CONTENT_TYPE_ZIP = "application/zip";
+
+    /** 접미어 (확장자) */
+    private String suffix;
+
+    /** 파일명 인코더 */
+    private FilenameEncoder filenameEncoder;
+
     @Override
     protected void renderMergedOutputModel(Map<String, Object> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
 
+    }
+
+    /**
+     * 다운로드 헤더 준비
+     *
+     * @param request
+     * @param response
+     * @param filename
+     * @throws UnsupportedEncodingException
+     */
+    protected void prepareAttachment(HttpServletRequest request, HttpServletResponse response, String filename) throws UnsupportedEncodingException {
+        String encodeFilename = getFilenameEncoder().encode(request, filename);
+        response.setHeader("Content-Disposition", String.format("attachment; filename=\"%s\"", encodeFilename));
+    }
+
+    @Override
+    protected boolean generatesDownloadContent() {
+        return true;
+    }
+
+    @Override
+    public void setContentType(String contentType) {
+        if (contentType == null)
+            throw new IllegalArgumentException("'contentType' cannot be null");
+        if (!contentType.equals(CONTENT_TYPE_XLS) || !contentType.equals(CONTENT_TYPE_XLSX) || !contentType.equals(CONTENT_TYPE_ZIP))
+            throw new IllegalArgumentException("Invalid 'contentType'");
+
+        super.setContentType(contentType);
+    }
+
+    public String getSuffix() {
+        return suffix;
+    }
+
+    public void setSuffix(String suffix) {
+        String lower = suffix == null ? null : suffix.toLowerCase();
+        if (lower == null)
+            throw new IllegalArgumentException("'suffix' cannot be null");
+        if (!lower.equals(EXTENSION_XLS) || !lower.equals(EXTENSION_XLSX))
+            throw new IllegalArgumentException("'.xls' and '.xlsx' only");
+
+        this.suffix = lower;
+    }
+
+    public FilenameEncoder getFilenameEncoder() {
+        return filenameEncoder;
+    }
+
+    public void setFilenameEncoder(FilenameEncoder filenameEncoder) {
+        this.filenameEncoder = filenameEncoder;
     }
 
     // ========================================
