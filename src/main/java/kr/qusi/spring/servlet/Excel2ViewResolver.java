@@ -1,7 +1,6 @@
 package kr.qusi.spring.servlet;
 
 import kr.qusi.spring.servlet.view.excel.Excel2View;
-import kr.qusi.spring.servlet.view.excel.XlsView;
 import org.springframework.web.servlet.view.UrlBasedViewResolver;
 
 public class Excel2ViewResolver extends UrlBasedViewResolver {
@@ -16,21 +15,30 @@ public class Excel2ViewResolver extends UrlBasedViewResolver {
     }
 
     @Override
-    protected XlsView buildView(String viewName) throws Exception {
-        XlsView view = (XlsView) super.buildView(viewName);
+    public void setSuffix(String suffix) {
+        String lower = suffix == null ? null : suffix.toLowerCase();
+        if (!(Excel2View.EXTENSION_XLS.equals(lower) || Excel2View.EXTENSION_XLSX.equals(lower)))
+            throw new IllegalArgumentException("'.xls' and '.xlsx' only");
+
+        if (getContentType() == null) {
+            if (Excel2View.EXTENSION_XLS.equals(lower)) {
+                setContentType(Excel2View.CONTENT_TYPE_XLS);
+            }
+            else if (Excel2View.EXTENSION_XLSX.equals(lower)) {
+                setContentType(Excel2View.CONTENT_TYPE_XLSX);
+            }
+        }
+
+        super.setSuffix(lower);
+    }
+
+    @Override
+    protected Excel2View buildView(String viewName) throws Exception {
+        Excel2View view = (Excel2View) super.buildView(viewName);
 
         String suffix = getSuffix();
         if (suffix != null) {
             view.setSuffix(suffix);
-        }
-
-        if (suffix != null && getContentType() == null) {
-            if (Excel2View.CONTENT_TYPE_XLS.equalsIgnoreCase(suffix)) {
-                view.setContentType(Excel2View.CONTENT_TYPE_XLS);
-            }
-            else if (Excel2View.CONTENT_TYPE_XLSX.equalsIgnoreCase(suffix)) {
-                view.setContentType(Excel2View.CONTENT_TYPE_XLSX);
-            }
         }
 
         return view;

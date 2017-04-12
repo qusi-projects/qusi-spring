@@ -1,6 +1,26 @@
 package kr.qusi.spring.servlet.view.excel;
 
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import kr.qusi.spring.servlet.view.encoding.DefaultFilenameEncoder;
 import kr.qusi.spring.servlet.view.encoding.FilenameEncoder;
+import lombok.extern.slf4j.Slf4j;
 import net.sf.jxls.transformer.XLSTransformer;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -11,13 +31,12 @@ import org.springframework.core.io.Resource;
 import org.springframework.web.context.support.ServletContextResource;
 import org.springframework.web.servlet.view.AbstractUrlBasedView;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.*;
-import java.util.*;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-
+/**
+ * 엑셀 생성뷰
+ * 데이터가 10k 이상 커지면 메모리사용량이 기하급수적으로 늘어나 행이 걸리는 현상발생
+ * 따라서, 데이터가 커지면 일정량으로 분활하여 엑셀을 생성 후 Zip 으로 다운로드함
+ */
+@Slf4j
 public class Excel2View extends AbstractUrlBasedView {
 
     public static final String BUNDLE = Bundle.class.getName();
@@ -44,7 +63,7 @@ public class Excel2View extends AbstractUrlBasedView {
     private String suffix;
 
     /** 파일명 인코더 */
-    private FilenameEncoder filenameEncoder;
+    private FilenameEncoder filenameEncoder = new DefaultFilenameEncoder();
 
     @Override
     protected void renderMergedOutputModel(Map<String, Object> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
@@ -55,24 +74,34 @@ public class Excel2View extends AbstractUrlBasedView {
         String basename = getBasename(request, bundle);
         Resource template = getTemplate(request, bundle);
         List<Map<String, Object>> extras = bundle.getExtrasAsList();
+        int extraSize = extras == null ? 0 : extras.size();
+
+        log.debug("basename: {}", basename);
+        log.debug("template: {}", template);
+        log.debug("extras: {}", extraSize);
 
         // 단일파일
-        if (extras.size() == 1) {
-            prepareAttachment(request, response, basename + getSuffix());
+        if (extraSize == 1) {
+            String filename = basename + getSuffix();
+            log.debug("File: {} (1/1)", filename);
+            prepareAttachment(request, response, filename);
 
             transformXLS(template, extras.get(0)).write(response.getOutputStream());
         }
         // 복수파일 (zip 압축)
         else {
             File tempDir = createTempDirectory();
+            log.debug("Temp: {}", tempDir);
 
-            for (int i = 0; i < extras.size(); i++) {
+            for (int index = 0, count = 1; index < extraSize; index++, count++) {
                 FileOutputStream os = null;
                 try {
-                    String filename = basename + "_" + getSuffix();
-                    os = new FileOutputStream(new File(getTempDir(), filename));
+                    String filename = basename + "_" + count + getSuffix();
+                    log.debug("File: {} ({}/{})", filename, count, extraSize);
 
-                    transformXLS(template, extras.get(i)).write(os);
+                    os = new FileOutputStream(new File(tempDir, filename));
+
+                    transformXLS(template, extras.get(index)).write(os);
                 } finally {
                     IOUtils.closeQuietly(os);
                 }
@@ -80,6 +109,7 @@ public class Excel2View extends AbstractUrlBasedView {
 
             // 압축파일 다운로드
             prepareAttachment(request, response, basename + EXTENSION_ZIP);
+            setContentType(CONTENT_TYPE_ZIP);
             zip(tempDir, response.getOutputStream());
         }
 
@@ -109,11 +139,11 @@ public class Excel2View extends AbstractUrlBasedView {
                 return template;
         }
 
-        throw new FileNotFoundException("Excel template not found");
+        throw new FileNotFoundException("Template not found");
     }
 
     protected File createTempDirectory() throws IOException {
-        File file = File.createTempFile(Excel2View.class.getSimpleName(), "", getTempDir());
+        File file = File.createTempFile("excel2view-", "", getTempDir());
         FileUtils.forceDelete(file);
         FileUtils.forceMkdir(file);
 
@@ -140,9 +170,7 @@ public class Excel2View extends AbstractUrlBasedView {
 
     @Override
     public void setContentType(String contentType) {
-        if (contentType == null)
-            throw new IllegalArgumentException("'contentType' cannot be null");
-        if (!contentType.equals(CONTENT_TYPE_XLS) || !contentType.equals(CONTENT_TYPE_XLSX) || !contentType.equals(CONTENT_TYPE_ZIP))
+        if (!(CONTENT_TYPE_XLS.equals(contentType) || CONTENT_TYPE_XLSX.equals(contentType) || CONTENT_TYPE_ZIP.equals(contentType)))
             throw new IllegalArgumentException("Invalid 'contentType'");
 
         super.setContentType(contentType);
@@ -154,9 +182,7 @@ public class Excel2View extends AbstractUrlBasedView {
 
     public void setSuffix(String suffix) {
         String lower = suffix == null ? null : suffix.toLowerCase();
-        if (lower == null)
-            throw new IllegalArgumentException("'suffix' cannot be null");
-        if (!lower.equals(EXTENSION_XLS) || !lower.equals(EXTENSION_XLSX))
+        if (!(EXTENSION_XLS.equals(lower) || EXTENSION_XLSX.equals(lower)))
             throw new IllegalArgumentException("'.xls' and '.xlsx' only");
 
         this.suffix = lower;
