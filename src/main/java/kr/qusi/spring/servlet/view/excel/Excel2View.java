@@ -1,5 +1,6 @@
 package kr.qusi.spring.servlet.view.excel;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -25,7 +26,6 @@ import net.sf.jxls.transformer.XLSTransformer;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.springframework.core.io.Resource;
 import org.springframework.web.context.support.ServletContextResource;
@@ -33,7 +33,7 @@ import org.springframework.web.servlet.view.AbstractUrlBasedView;
 
 /**
  * 엑셀 생성뷰
- * 데이터가 10k 이상 커지면 메모리사용량이 기하급수적으로 늘어나 행이 걸리는 현상발생
+ * 데이터가 50k 이상 커지면 메모리사용량이 기하급수적으로 늘어나 행이 걸리는 현상발생
  * 따라서, 데이터가 커지면 일정량으로 분활하여 엑셀을 생성 후 Zip 으로 다운로드함
  */
 @Slf4j
@@ -89,7 +89,17 @@ public class Excel2View extends AbstractUrlBasedView {
             log.debug("File: {} (1/1)", filename);
             prepareAttachment(request, response, filename);
 
-            transformXLS(template, bundle.getExtras()).write(response.getOutputStream());
+            BufferedInputStream is = null;
+
+            try {
+                is = new BufferedInputStream(template.getInputStream());
+
+                Workbook workbook = new XLSTransformer().transformXLS(is, bundle.getExtras());
+                workbook.write(response.getOutputStream());
+            } finally {
+                IOUtils.closeQuietly(is);
+            }
+
         }
         // 복수파일 (zip 압축)
         else {
@@ -97,15 +107,20 @@ public class Excel2View extends AbstractUrlBasedView {
             log.debug("Temp: {}", tempDir);
 
             for (int index = 0, count = 1; index < extraSize; index++, count++) {
-                FileOutputStream os = null;
+                BufferedInputStream is = null;
+                BufferedOutputStream os = null;
+
                 try {
                     String filename = basename + "_" + count + getSuffix();
                     log.debug("File: {} ({}/{})", filename, count, extraSize);
 
-                    os = new FileOutputStream(new File(tempDir, filename));
+                    is = new BufferedInputStream(template.getInputStream());
+                    os = new BufferedOutputStream(new FileOutputStream(new File(tempDir, filename)));
 
-                    transformXLS(template, extras.get(index)).write(os);
+                    Workbook workbook = new XLSTransformer().transformXLS(is, extras.get(index));
+                    workbook.write(os);
                 } finally {
+                    IOUtils.closeQuietly(is);
                     IOUtils.closeQuietly(os);
                 }
             }
@@ -117,10 +132,6 @@ public class Excel2View extends AbstractUrlBasedView {
         }
 
         response.flushBuffer();
-    }
-
-    private Workbook transformXLS(Resource template, Map<String, Object> extras) throws IOException, InvalidFormatException {
-        return new XLSTransformer().transformXLS(template.getInputStream(), extras);
     }
 
     protected String getBasename(HttpServletRequest request, Bundle bundle) throws FileNotFoundException {
@@ -304,7 +315,7 @@ public class Excel2View extends AbstractUrlBasedView {
         private static final int MAX_SPLIT_SIZE = 60000;
 
         /** 분할 크기 기본값 */
-        private static final int DEFAULT_SPLIT_SIZE = 10000;
+        private static final int DEFAULT_SPLIT_SIZE = 50000;
 
         /** 저장될 파일명 */
         private String filename;
