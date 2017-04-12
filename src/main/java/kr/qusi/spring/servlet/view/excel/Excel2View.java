@@ -59,7 +59,10 @@ public class Excel2View extends AbstractUrlBasedView {
     /** Zip ContentType */
     public static final String CONTENT_TYPE_ZIP = "application/zip";
 
-    /** 접미어 (확장자) */
+    private String viewName;
+
+    private String prefix;
+
     private String suffix;
 
     /** 파일명 인코더 */
@@ -81,12 +84,12 @@ public class Excel2View extends AbstractUrlBasedView {
         log.debug("extras: {}", extraSize);
 
         // 단일파일
-        if (extraSize == 1) {
+        if (extraSize <= 1) {
             String filename = basename + getSuffix();
             log.debug("File: {} (1/1)", filename);
             prepareAttachment(request, response, filename);
 
-            transformXLS(template, extras.get(0)).write(response.getOutputStream());
+            transformXLS(template, bundle.getExtras()).write(response.getOutputStream());
         }
         // 복수파일 (zip 압축)
         else {
@@ -109,7 +112,7 @@ public class Excel2View extends AbstractUrlBasedView {
 
             // 압축파일 다운로드
             prepareAttachment(request, response, basename + EXTENSION_ZIP);
-            setContentType(CONTENT_TYPE_ZIP);
+            response.setContentType(CONTENT_TYPE_ZIP);
             zip(tempDir, response.getOutputStream());
         }
 
@@ -127,13 +130,21 @@ public class Excel2View extends AbstractUrlBasedView {
 
     protected Resource getTemplate(HttpServletRequest request, Bundle bundle) throws FileNotFoundException {
         // 템플릿 파일목록 생성
-        List<String> tmplNames = new ArrayList<>();
-        if (bundle.getTemplate() != null)
-            tmplNames.add(bundle.getTemplate() + getSuffix());
-        tmplNames.add(FilenameUtils.removeExtension(getUrl()) + getSuffix());
+        List<String> candidateTmpls = new ArrayList<>();
+        if (bundle.getTemplate() != null) {
+            candidateTmpls.add(bundle.getTemplate());
+            candidateTmpls.add(FilenameUtils.removeExtension(bundle.getTemplate()));
+            candidateTmpls.add(bundle.getTemplate() + getSuffix());
+        }
+
+        String defaultTmpl = getPrefix() + getViewName();
+        candidateTmpls.add(defaultTmpl);
+        candidateTmpls.add(FilenameUtils.removeExtension(defaultTmpl));
+        candidateTmpls.add(defaultTmpl + getSuffix());
+        candidateTmpls.add(FilenameUtils.removeExtension(defaultTmpl) + getSuffix());
 
         // 템플릿 파일 찾기
-        for (String tmplName : tmplNames) {
+        for (String tmplName : candidateTmpls) {
             Resource template = new ServletContextResource(request.getServletContext(), tmplName);
             if (template.exists())
                 return template;
@@ -174,6 +185,22 @@ public class Excel2View extends AbstractUrlBasedView {
             throw new IllegalArgumentException("Invalid 'contentType'");
 
         super.setContentType(contentType);
+    }
+
+    public String getViewName() {
+        return viewName;
+    }
+
+    public void setViewName(String viewName) {
+        this.viewName = viewName;
+    }
+
+    public String getPrefix() {
+        return prefix;
+    }
+
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
     }
 
     public String getSuffix() {
@@ -335,7 +362,7 @@ public class Excel2View extends AbstractUrlBasedView {
         }
 
         public Map<String, Object> getExtras() {
-            return extras == null ? null : Collections.unmodifiableMap(extras);
+            return extras;
         }
 
         public List<Map<String, Object>> getExtrasAsList() {

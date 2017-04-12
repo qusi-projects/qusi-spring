@@ -15,33 +15,18 @@ public class Excel2ViewResolver extends UrlBasedViewResolver {
     }
 
     @Override
-    public void setSuffix(String suffix) {
-        String lower = suffix == null ? null : suffix.toLowerCase();
-        if (!(Excel2View.EXTENSION_XLS.equals(lower) || Excel2View.EXTENSION_XLSX.equals(lower)))
-            throw new IllegalArgumentException("'.xls' and '.xlsx' only");
+    protected Excel2View buildView(String viewName) throws Exception {
+        Excel2View view = (Excel2View) super.buildView(viewName);
+        view.setViewName(viewName);
+        view.setPrefix(getPrefix());
+        view.setSuffix(getSuffix());
 
-        if (getContentType() == null) {
-            if (Excel2View.EXTENSION_XLS.equals(lower)) {
-                setContentType(Excel2View.CONTENT_TYPE_XLS);
-            }
-            else if (Excel2View.EXTENSION_XLSX.equals(lower)) {
-                setContentType(Excel2View.CONTENT_TYPE_XLSX);
-            }
-        }
-
-        super.setSuffix(lower);
+        return view;
     }
 
     @Override
-    protected Excel2View buildView(String viewName) throws Exception {
-        Excel2View view = (Excel2View) super.buildView(viewName);
-
-        String suffix = getSuffix();
-        if (suffix != null) {
-            view.setSuffix(suffix);
-        }
-
-        return view;
+    public void setSuffix(String suffix) {
+        super.setSuffix(suffix == null ? null : suffix.toLowerCase());
     }
 
 }
