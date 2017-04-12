@@ -130,7 +130,7 @@ public class Excel2View extends AbstractUrlBasedView {
         List<String> tmplNames = new ArrayList<>();
         if (bundle.getTemplate() != null)
             tmplNames.add(bundle.getTemplate() + getSuffix());
-        tmplNames.add(getUrl());
+        tmplNames.add(FilenameUtils.removeExtension(getUrl()) + getSuffix());
 
         // 템플릿 파일 찾기
         for (String tmplName : tmplNames) {
